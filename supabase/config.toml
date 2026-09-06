@@ -1,0 +1,4 @@
+project_id = "ai-subscription-tracker"
+
+[functions.renewal-reminders]
+verify_jwt = false
