@@ -1,55 +1,96 @@
-export type BillingCycle = 'weekly' | 'monthly' | 'quarterly' | 'annual'
+export type Role = 'customer' | 'provider' | 'admin'
+export type BookingStatus = 'pending' | 'accepted' | 'declined' | 'completed' | 'cancelled'
 
-export type Category =
-  | 'writing'
-  | 'image'
-  | 'video'
-  | 'audio'
-  | 'code'
-  | 'productivity'
-  | 'research'
-  | 'other'
+export interface Category {
+  slug: string
+  label: string
+  icon: string
+  is_live: boolean
+}
 
-export type SubscriptionStatus = 'active' | 'cancelled'
-
-export interface Subscription {
+export interface Profile {
   id: string
-  user_id: string
-  name: string
-  category: Category
-  cost: number
-  billing_cycle: BillingCycle
-  renewal_date: string // ISO date, e.g. 2026-09-20
-  last_used_at: string | null // ISO date
-  status: SubscriptionStatus
-  notes: string | null
+  role: Role
+  full_name: string
+  phone: string | null
+  city: string | null
+  created_at: string
+}
+
+export interface ProviderProfile {
+  id: string
+  category: string
+  business_name: string
+  bio: string
+  city: string
+  is_approved: boolean
+  avg_rating: number
+  review_count: number
+  created_at: string
+}
+
+export interface Service {
+  id: string
+  provider_id: string
+  title: string
+  description: string
+  price: number
+  duration_minutes: number
+  created_at: string
+}
+
+export interface Availability {
+  id: string
+  provider_id: string
+  weekday: number // 0 = Sunday ... 6 = Saturday
+  start_time: string // "09:00:00"
+  end_time: string
+}
+
+export interface Booking {
+  id: string
+  customer_id: string
+  provider_id: string
+  service_id: string
+  scheduled_at: string // ISO timestamp
+  status: BookingStatus
+  notes: string
+  price: number
+  platform_fee: number
+  provider_payout: number
   created_at: string
   updated_at: string
 }
 
-export type SubscriptionInput = {
-  name: string
-  category: Category
-  cost: number
-  billing_cycle: BillingCycle
-  renewal_date: string
-  notes: string
+export interface Review {
+  id: string
+  booking_id: string
+  customer_id: string
+  provider_id: string
+  rating: number
+  comment: string
+  created_at: string
 }
 
-export const CATEGORIES: { value: Category; label: string }[] = [
-  { value: 'writing', label: 'Writing' },
-  { value: 'image', label: 'Image' },
-  { value: 'video', label: 'Video' },
-  { value: 'audio', label: 'Audio' },
-  { value: 'code', label: 'Code' },
-  { value: 'productivity', label: 'Productivity' },
-  { value: 'research', label: 'Research' },
-  { value: 'other', label: 'Other' },
+// Joined shapes the UI actually renders.
+export interface ProviderWithServices extends ProviderProfile {
+  services: Service[]
+}
+
+export interface BookingWithDetails extends Booking {
+  service: Pick<Service, 'title' | 'duration_minutes'> | null
+  provider: Pick<ProviderProfile, 'business_name' | 'city'> | null
+  customer: Pick<Profile, 'full_name'> | null
+}
+
+export const WEEKDAYS = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
 ]
 
-export const BILLING_CYCLES: { value: BillingCycle; label: string }[] = [
-  { value: 'weekly', label: 'Weekly' },
-  { value: 'monthly', label: 'Monthly' },
-  { value: 'quarterly', label: 'Quarterly' },
-  { value: 'annual', label: 'Annual' },
-]
+export const PLATFORM_FEE_PERCENT = 0.1

@@ -1,9 +1,9 @@
 {
-  "name": "ai-subscription-tracker",
+  "name": "localpro",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Track every AI tool subscription in one place: total spend, upcoming renewals, and nudges for unused or overlapping tools.",
+  "description": "A local services marketplace: customers find, compare and book approved providers; providers manage services, hours and bookings; admins approve providers and watch platform revenue.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
