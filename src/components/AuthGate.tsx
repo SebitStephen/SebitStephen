@@ -34,10 +34,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <div className="centered-page">
       <div className="auth-card">
-        <h1>AI Subscription Tracker</h1>
+        <h1>LocalPro</h1>
         <p className="muted">
-          Track every ChatGPT, Claude, Midjourney &amp; co. subscription in one place — see total
-          spend, catch renewals before they hit, and flag tools you're not using.
+          Find and book trusted local service providers — starting with home cleaning. Or sign up
+          as a provider to list your services and start taking bookings.
         </p>
 
         {!supabaseConfigured && (

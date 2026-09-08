@@ -1,4 +1,4 @@
-project_id = "ai-subscription-tracker"
+project_id = "localpro"
 
-[functions.renewal-reminders]
-verify_jwt = false
+[functions.notify-booking]
+verify_jwt = true

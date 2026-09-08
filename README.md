@@ -1,28 +1,65 @@
-# AI Subscription Tracker
+# LocalPro
 
-A dashboard that tracks all your AI tool subscriptions (ChatGPT, Claude, Midjourney, etc.) — what
-you're paying, when they renew, and which ones are overlapping or going unused.
+A local services marketplace where customers find, compare, and book trusted local service
+providers — and providers manage their business from the same app.
 
-**Core loop:** Add your subscriptions → see total spend → get nudged when something's unused or
-overlapping.
+**Core loop:** Customer browses approved providers in their city → books a time slot → provider
+accepts and completes the job → customer reviews it. LocalPro takes a 10% commission on every
+booking.
+
+## Start small, then expand
+
+The pitch behind this app covers nine service categories (plumbing, cleaning, haircuts, handyman,
+car detailing, gardening, moving, tech repair, pet services). Building all of them at once is how
+marketplace MVPs die before anyone uses them, so v1 launches with exactly one:
+
+**Home Cleaning, one city.** The schema and UI already support more categories (see the
+`categories` table and the "coming soon" tiles on the browse screen) — turning one on is a
+one-row update, not a rebuild.
 
 ## v1 feature set
 
-- Manual subscription entry: name, cost, billing cycle, renewal date, category, notes
-- Dashboard: monthly/annual spend totals, upcoming renewals
-- Renewal reminder emails, 3 days before a charge (Supabase Edge Function + Resend)
-- Manual "last used" check-in (`Used today` button) to flag stale tools
-- Category-based overlap detection (writing, image, video, audio, code, productivity, research)
+**Customers**
 
-Explicitly out of scope for v1: bank/email auto-detection, per-tool usage API integrations, team
-accounts, and a "switch to X and save $Y" recommendation engine.
+- Browse approved providers by category + city, sorted by rating or price
+- Provider profile: bio, services & prices, reviews, weekly availability
+- Book a service: pick a date, see real open time slots (computed from the provider's working
+  hours minus their existing bookings), add notes
+- My bookings: upcoming / completed / cancelled, cancel a pending or accepted booking
+- Leave a star rating + comment after a completed booking
+
+**Providers**
+
+- Onboard as a provider (business name, city) — starts unapproved until an admin reviews it
+- Add/remove services with price & duration
+- Set weekly working hours
+- Accept, decline, or mark a booking completed
+- Earnings summary: completed jobs, total earned, pending payout (after the platform fee)
+
+**Admin**
+
+- Approve or suspend provider accounts
+- View all bookings platform-wide
+- Platform stats: approved providers, completed bookings, gross booking value, fee revenue
+
+Explicitly out of scope for v1: real payment collection (Stripe), geo-distance search (city is a
+text match, not lat/lng), multi-category providers, disputes/refunds tooling, and push
+notifications (email only, and only if Resend is configured).
+
+## Commission model
+
+Every booking snapshots `price`, `platform_fee` (10% of price), and `provider_payout` at the
+moment it's created — computed **server-side** by a Postgres trigger from the service's current
+price, never trusted from the client. Changing `platform_fee_percent()` in
+`supabase/migrations/0001_init.sql` only affects bookings created after the change.
 
 ## Tech stack
 
 - **Frontend:** React + TypeScript + Vite
 - **Backend:** Supabase (Postgres + Auth + Row Level Security)
 - **Auth:** Supabase email magic links (no passwords to manage)
-- **Reminders:** Supabase Edge Function on a schedule, emailing via [Resend](https://resend.com)
+- **Notifications:** Supabase Edge Function on booking create/status-change, emailing via
+  [Resend](https://resend.com) (optional — the app works without it)
 
 ## Getting started
 
@@ -36,10 +73,16 @@ supabase link --project-ref your-project-ref
 supabase db push
 ```
 
-Or paste the contents of `supabase/migrations/0001_init.sql` into the Supabase SQL editor.
+Or paste the contents of `supabase/migrations/0001_init.sql` into the Supabase SQL editor. This
+creates the `categories`, `profiles`, `provider_profiles`, `services`, `availability`, `bookings`,
+and `reviews` tables, seeds the nine categories (only `cleaning` is `is_live`), and sets up Row
+Level Security so:
 
-This creates a `subscriptions` table with Row Level Security so each user can only see their own
-rows.
+- anyone can browse approved providers, their services, availability and reviews
+- a provider can only manage their own business
+- a customer can only see/create/cancel their own bookings; a provider can only see and act on
+  bookings made with them
+- an admin (see below) can see and manage everything
 
 ### 2. Configure the frontend
 
@@ -60,55 +103,61 @@ npm install
 npm run dev
 ```
 
-Sign in with your email — Supabase sends a magic link, no password needed.
+Sign in with your email — Supabase sends a magic link, no password needed. On first sign-in
+you'll choose whether you're finding a service or offering one.
 
-### 4. Renewal reminder emails (optional for local dev)
+### 4. Make yourself an admin (optional)
 
-The reminder job lives in `supabase/functions/renewal-reminders`. It finds every active
-subscription renewing in exactly 3 days and emails the owner via Resend.
-
-```bash
-supabase functions deploy renewal-reminders
-supabase secrets set RESEND_API_KEY=your_resend_key REMINDER_FROM_EMAIL=reminders@yourdomain.com
-```
-
-Then schedule it to run daily. The simplest approach is Postgres `pg_cron` + `pg_net` calling the
-function URL:
+There's no admin sign-up flow by design — grant it manually once you have a user:
 
 ```sql
-select cron.schedule(
-  'renewal-reminders-daily',
-  '0 13 * * *', -- 1pm UTC daily; adjust to taste
-  $$
-  select net.http_post(
-    url := 'https://<your-project-ref>.functions.supabase.co/renewal-reminders',
-    headers := jsonb_build_object('Authorization', 'Bearer <SERVICE_ROLE_KEY>')
-  );
-  $$
-);
+update public.profiles set role = 'admin' where id = 'the-users-auth-uid';
 ```
 
-(Enable the `pg_cron` and `pg_net` extensions first under **Database → Extensions**.)
-Alternatively, use the Supabase Dashboard's built-in Cron UI for Edge Functions if available on
-your project, or an external scheduler (GitHub Actions cron, cron-job.org) hitting the function URL.
+### 5. Approve a provider
+
+A new provider's profile is created but hidden from customers (`is_approved = false`) until an
+admin approves it from the **Providers** tab of the admin dashboard.
+
+### 6. Booking notification emails (optional)
+
+The notifier lives in `supabase/functions/notify-booking`. The client calls it right after a
+booking is created (emails the provider) and right after its status changes (emails the
+customer).
+
+```bash
+supabase functions deploy notify-booking
+supabase secrets set RESEND_API_KEY=your_resend_key NOTIFY_FROM_EMAIL=notify@yourdomain.com
+```
+
+Without Resend configured, the function still runs but silently skips sending — nothing else in
+the app depends on it.
 
 ## Project structure
 
 ```
 src/
-  components/    UI: dashboard, forms, tables, auth screen
-  hooks/         useAuth, useSubscriptions (Supabase queries)
+  components/
+    customer/    Browse providers, provider profile + booking modal, my bookings + reviews
+    provider/    Bookings, services, availability, earnings
+    admin/       Provider approvals, all bookings, platform stats
+    AuthGate.tsx, RoleSetup.tsx, Header.tsx
+  hooks/         useAuth, useProfile, useMarketplace, useCustomerBookings,
+                 useProviderPortal, useAdmin
   lib/           Supabase client
-  utils/         billing math (monthly/annual normalization, staleness, dates)
-  types.ts       shared types + category/billing-cycle options
+  utils/         formatting + the availability-slot generator
+  types.ts       shared types + weekday labels
 supabase/
-  migrations/    SQL schema + RLS policies
-  functions/     renewal-reminders Edge Function
+  migrations/    schema, RLS policies, price/rating triggers, provider_busy_slots() RPC
+  functions/     notify-booking Edge Function
 ```
 
 ## Roadmap (v2+)
 
-- Auto-detect subscriptions via bank or email parsing
-- Per-tool usage API integrations (token counts, message counts, etc.)
-- Team/shared subscription tracking
-- "Switch to X, save $Y" recommendations based on category overlap
+- Real payment capture at booking time (Stripe), instead of a snapshotted fee/payout on trust
+- Turn on more categories from the pitch (plumbing, handyman, gardening, …) once cleaning proves
+  the model in one city
+- Geo-distance search (Mapbox/Google Maps) instead of a city text match
+- DB-level constraints on which booking-status transitions each side may make
+- Provider subscriptions, featured listings, and a premium customer membership
+- Push notifications alongside email
